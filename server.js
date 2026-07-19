@@ -7,6 +7,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const LADDER_URL = process.env.LADDER_URL || "https://ladder-bueno.theworkpc.com";
 
+function firstUrlFromSrcset(srcset) {
+  if (!srcset) return null;
+  return srcset.split(",")[0].trim().split(" ")[0] || null;
+}
+
 app.get("/read", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).send("Paramètre 'url' manquant");
@@ -17,24 +22,47 @@ app.get("/read", async (req, res) => {
     const html = await response.text();
 
     const dom = new JSDOM(html, { url: targetUrl });
+    const document = dom.window.document;
 
-    // Corrige les images en lazy-load (data-src, etc.) avant l'extraction
-    dom.window.document.querySelectorAll("img").forEach(img => {
-      const currentSrc = img.getAttribute("src");
-      if (!currentSrc || currentSrc.startsWith("data:")) {
-        const lazySrc = img.getAttribute("data-src") || img.getAttribute("data-original") ||
-                         img.getAttribute("data-lazy-src") || img.getAttribute("data-lazy");
-        if (lazySrc) img.setAttribute("src", lazySrc);
+    // --- Corrige les images lazy-load / picture / background-image AVANT extraction ---
+    document.querySelectorAll("img").forEach(img => {
+      const current = img.getAttribute("src");
+      if (!current || current.startsWith("data:")) {
+        const lazy = img.getAttribute("data-src") || img.getAttribute("data-lazy-src") ||
+                     img.getAttribute("data-original") || img.getAttribute("data-lazy");
+        const srcset = img.getAttribute("srcset") || img.getAttribute("data-srcset");
+        const fromSrcset = firstUrlFromSrcset(srcset);
+        const finalSrc = lazy || fromSrcset;
+        if (finalSrc) img.setAttribute("src", finalSrc);
       }
     });
-    // Dépile les <noscript><img></noscript> (autre pattern de lazy-load courant)
-    dom.window.document.querySelectorAll("noscript").forEach(ns => {
-      const wrapper = dom.window.document.createElement("div");
+    document.querySelectorAll("picture").forEach(pic => {
+      const img = pic.querySelector("img");
+      const source = pic.querySelector("source[srcset]");
+      if (img && source) {
+        const current = img.getAttribute("src");
+        if (!current || current.startsWith("data:")) {
+          const url = firstUrlFromSrcset(source.getAttribute("srcset"));
+          if (url) img.setAttribute("src", url);
+        }
+      }
+    });
+    document.querySelectorAll('[style*="background-image"]').forEach(el => {
+      const style = el.getAttribute("style") || "";
+      const match = style.match(/background-image:\s*url\(['"]?([^'")]+)['"]?\)/i);
+      if (match && !el.querySelector("img")) {
+        const img = document.createElement("img");
+        img.setAttribute("src", match[1]);
+        el.prepend(img);
+      }
+    });
+    document.querySelectorAll("noscript").forEach(ns => {
+      const wrapper = document.createElement("div");
       wrapper.innerHTML = ns.textContent;
       if (wrapper.querySelector("img")) ns.replaceWith(wrapper);
     });
 
-    const reader = new Readability(dom.window.document);
+    const reader = new Readability(document);
     const article = reader.parse();
 
     if (!article) return res.status(500).send("Impossible d'extraire le contenu de cet article.");
@@ -42,14 +70,27 @@ app.get("/read", async (req, res) => {
     const contentDom = new JSDOM(`<div id="root">${article.content}</div>`);
     const root = contentDom.window.document.getElementById("root");
 
-    // Supprime les blocs de bandeau cookie (jamais s'ils contiennent image/tweet/iframe)
-    const cookiePatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies/i;
+    // Supprime les styles inline (empêche les cartes Twitter/X de forcer un fond blanc)
+    root.querySelectorAll("[style]").forEach(el => el.removeAttribute("style"));
+
+    // Supprime les blocs promo/cookie textuels courts (jamais s'ils contiennent image/tweet/iframe)
+    const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés/i;
     root.querySelectorAll("p, div").forEach(el => {
       const text = el.textContent.trim();
-      if (text.length < 500 && cookiePatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
+      if (text.length < 500 && junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
         el.remove();
       }
     });
+
+    // Supprime les blocs de fin sans aucun texte (rangées d'icônes, badges d'app) - s'arrête au premier vrai texte rencontré
+    let trailing = Array.from(root.children);
+    for (let i = trailing.length - 1; i >= 0; i--) {
+      if (trailing[i].textContent.trim().length === 0) {
+        trailing[i].remove();
+      } else {
+        break;
+      }
+    }
 
     const cleanedContent = root.innerHTML;
 
@@ -77,9 +118,11 @@ app.get("/read", async (req, res) => {
     border-radius: 14px;
     font-style: normal;
     font-size: 0.95em;
+    color: inherit;
   }
   @media (prefers-color-scheme: dark) { blockquote { background: rgba(255,255,255,0.07); } }
   blockquote p { margin: 0.5em 0; }
+  blockquote a { color: inherit; }
   hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2.5em 0; }
 </style>
 </head>
