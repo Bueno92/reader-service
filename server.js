@@ -26,8 +26,6 @@ function looksLikeBuyBox(el) {
   return hasPrice && !!link;
 }
 
-// Coupe tout ce qui suit un marqueur de "fin d'article" (footer/widgets génériques),
-// en remontant l'arbre DOM et en supprimant les frères suivants à chaque niveau.
 function pruneTrailingContent(document, markerRegex) {
   const candidates = Array.from(document.querySelectorAll("body *"));
   const marker = candidates.find(el => markerRegex.test(el.textContent) && el.children.length < 6);
@@ -72,7 +70,6 @@ app.get("/read", async (req, res) => {
     const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
                      document.querySelector('meta[name="twitter:image"]')?.getAttribute("content");
 
-    // Coupe tout ce qui suit la fin réelle de l'article (footer/widgets génériques)
     pruneTrailingContent(document, /^Sujets liés\s*:?$/i);
     pruneTrailingContent(document, /Community managers.*enquête|On filtre, on vérifie, on rédige/i);
 
@@ -83,7 +80,7 @@ app.get("/read", async (req, res) => {
     const savedBuyBoxes = buyBoxCandidates.map(el => el.outerHTML);
 
     document.querySelectorAll(
-      '[class*="premium-promo"], [class*="card-install-pwa"], [class*="hof-box"], [class*="post-card"], [class*="related-posts"], [class*="author-bio"], [class*="post-author"], [class*="author-box"]'
+      '[class*="premium-promo"], [class*="card-install-pwa"], [class*="hof-box"], [class*="post-card"], [class*="related-posts"], [class*="author-bio"], [class*="post-author"], [class*="author-box"], [class*="comparators__"]'
     ).forEach(el => el.remove());
 
     document.querySelectorAll('[id*="embedded-tag"]').forEach(el => el.remove());
@@ -248,12 +245,37 @@ app.get("/read", async (req, res) => {
 <title>${article.title}</title>
 <style>
   :root { color-scheme: light dark; }
-  body { max-width: 680px; margin: 60px auto; padding: 0 24px; font-family: -apple-system, "SF Pro Text", "Georgia", serif; font-size: 20px; line-height: 1.65; letter-spacing: 0.01em; color: #1a1a1a; background: #fff; }
-  @media (prefers-color-scheme: dark) { body { color: #e8e8e8; background: #1c1c1e; } a { color: #6cb2eb; } }
-  h1 { font-family: -apple-system, "SF Pro Display", "Georgia", serif; font-size: 2em; font-weight: 700; line-height: 1.25; margin-bottom: 0.3em; letter-spacing: -0.01em; }
-  .byline { font-family: -apple-system, sans-serif; color: #86868b; font-size: 0.85em; margin-bottom: 2.5em; text-transform: uppercase; letter-spacing: 0.05em; }
+  body {
+    max-width: 680px;
+    margin: 60px auto;
+    padding: 0 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 19px;
+    line-height: 1.6;
+    letter-spacing: -0.003em;
+    font-weight: 400;
+    color: #1d1d1f;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #f5f5f7; background: #1c1c1e; } a { color: #6cb2eb; } }
+  h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 2.1em;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 0.3em;
+    letter-spacing: -0.02em;
+    color: #000;
+  }
+  @media (prefers-color-scheme: dark) { h1 { color: #fff; } }
+  h2, h3, h4 {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .byline { color: #86868b; font-size: 0.85em; margin-bottom: 2.5em; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 590; }
   p { margin: 1.4em 0; }
-  img { max-width: 100%; height: auto; border-radius: 10px; margin: 1.5em 0; display: block; }
+  img { max-width: 100%; height: auto; border-radius: 12px; margin: 1.5em 0; display: block; }
   figcaption { font-size: 0.8em; color: #86868b; text-align: center; margin-top: -1em; margin-bottom: 1.5em; }
   a { color: #0066cc; text-decoration: none; border-bottom: 1px solid rgba(0,102,204,0.3); }
   blockquote { margin: 2em 0; padding: 1.2em 1.4em; background: rgba(0,0,0,0.04); border-left: none; border-radius: 14px; font-style: normal; font-size: 0.95em; color: inherit; }
