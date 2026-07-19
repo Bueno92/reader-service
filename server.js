@@ -22,6 +22,21 @@ app.get("/read", async (req, res) => {
 
     if (!article) return res.status(500).send("Impossible d'extraire le contenu de cet article.");
 
+    // Nettoyage post-Readability
+    const contentDom = new JSDOM(`<div id="root">${article.content}</div>`);
+    const root = contentDom.window.document.getElementById("root");
+
+    root.querySelectorAll(
+      '.twitter-tweet, [class*="twitter"], [class*="instagram-media"], [class*="tiktok-embed"], blockquote[class*="embed"], iframe'
+    ).forEach(el => el.remove());
+
+    const cookiePatterns = /cookies et autres traceurs|Ce contenu est bloqué|en savoir plus\)$|opéré par (Twitter|Meta|Google|TikTok)/i;
+    root.querySelectorAll("p, div").forEach(el => {
+      if (cookiePatterns.test(el.textContent)) el.remove();
+    });
+
+    const cleanedContent = root.innerHTML;
+
     res.send(`<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -29,58 +44,21 @@ app.get("/read", async (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${article.title}</title>
 <style>
-  :root {
-    color-scheme: light dark;
-  }
-  body {
-    max-width: 680px;
-    margin: 60px auto;
-    padding: 0 24px;
-    font-family: -apple-system, "SF Pro Text", "Georgia", serif;
-    font-size: 20px;
-    line-height: 1.65;
-    letter-spacing: 0.01em;
-    color: #1a1a1a;
-    background: #fff;
-  }
-  @media (prefers-color-scheme: dark) {
-    body { color: #e8e8e8; background: #1c1c1e; }
-    a { color: #6cb2eb; }
-  }
-  h1 {
-    font-family: -apple-system, "SF Pro Display", "Georgia", serif;
-    font-size: 2em;
-    font-weight: 700;
-    line-height: 1.25;
-    margin-bottom: 0.3em;
-    letter-spacing: -0.01em;
-  }
-  .byline {
-    font-family: -apple-system, sans-serif;
-    color: #86868b;
-    font-size: 0.85em;
-    margin-bottom: 2.5em;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
+  :root { color-scheme: light dark; }
+  body { max-width: 680px; margin: 60px auto; padding: 0 24px; font-family: -apple-system, "SF Pro Text", "Georgia", serif; font-size: 20px; line-height: 1.65; letter-spacing: 0.01em; color: #1a1a1a; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e8e8e8; background: #1c1c1e; } a { color: #6cb2eb; } }
+  h1 { font-family: -apple-system, "SF Pro Display", "Georgia", serif; font-size: 2em; font-weight: 700; line-height: 1.25; margin-bottom: 0.3em; letter-spacing: -0.01em; }
+  .byline { font-family: -apple-system, sans-serif; color: #86868b; font-size: 0.85em; margin-bottom: 2.5em; text-transform: uppercase; letter-spacing: 0.05em; }
   p { margin: 1.4em 0; }
   img { max-width: 100%; height: auto; border-radius: 8px; margin: 1.5em 0; }
   a { color: #0066cc; text-decoration: none; border-bottom: 1px solid rgba(0,102,204,0.3); }
-  blockquote {
-    border-left: 3px solid #d1d1d6;
-    margin: 1.5em 0;
-    padding-left: 1.2em;
-    color: #515154;
-    font-style: italic;
-  }
-  figure { margin: 1.5em 0; }
-  figcaption { font-size: 0.8em; color: #86868b; text-align: center; margin-top: 0.5em; }
+  blockquote { border-left: 3px solid #d1d1d6; margin: 1.5em 0; padding-left: 1.2em; color: #515154; font-style: italic; }
 </style>
 </head>
 <body>
   <h1>${article.title}</h1>
   <div class="byline">${article.byline || ""} ${article.siteName ? "· " + article.siteName : ""}</div>
-  ${article.content}
+  ${cleanedContent}
 </body>
 </html>`);
   } catch (err) {
