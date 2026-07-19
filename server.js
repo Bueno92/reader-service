@@ -107,7 +107,7 @@ app.get("/read", async (req, res) => {
     });
 
     // Supprime les blocs promo/cookie textuels (jamais s'ils contiennent image/tweet/iframe)
-    const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés/i;
+    const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés|édito exclusif|Inscrivez-vous gratuitement|newsletter tech|ToujoursPlus/i;
     root.querySelectorAll("p, div").forEach(el => {
       const text = el.textContent.trim();
       if (junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
@@ -115,20 +115,58 @@ app.get("/read", async (req, res) => {
       }
     });
 
-    // Supprime tout bloc visuellement vide (rectangles fantômes, icônes seules sans texte)
-    root.querySelectorAll("div, span, p").forEach(el => {
-      if (isVisuallyEmpty(el)) el.remove();
-    });
+    // Détecte et restyle les blocs "On aime / On aime moins" (motif générique, tous sites)
+    const prosPattern = /^(on aime|avantages|les \+|points forts)\s*:?$/i;
+    const consPattern = /^(on aime moins|inconvénients|les -|points faibles)\s*:?$/i;
 
-    // Passe 1 : nettoie les blocs vides en toute fin d'article
-    let last = root.lastElementChild;
-    while (last && isVisuallyEmpty(last)) {
-      root.removeChild(last);
-      last = root.lastElementChild;
+    const headings = Array.from(root.querySelectorAll("h1, h2, h3, h4, strong"));
+    let prosHeading = headings.find(h => prosPattern.test(h.textContent.trim()));
+    let consHeading = headings.find(h => consPattern.test(h.textContent.trim()));
+
+    if (prosHeading && consHeading) {
+      const prosList = prosHeading.nextElementSibling;
+      const consList = consHeading.nextElementSibling;
+      if (prosList?.tagName === "UL" && consList?.tagName === "UL") {
+        const card = contentDom.window.document.createElement("div");
+        card.className = "verdict-card";
+        card.innerHTML = `
+          <div class="verdict-col verdict-pros">
+            <h4>👍 On aime</h4>
+            ${prosList.outerHTML}
+          </div>
+          <div class="verdict-col verdict-cons">
+            <h4>👎 On aime moins</h4>
+            ${consList.outerHTML}
+          </div>
+        `;
+        prosHeading.replaceWith(card);
+        prosList.remove();
+        consHeading.remove();
+        consList.remove();
+      }
     }
 
-    // Passe 2 : supprime une image isolée en toute fin (sans légende = probablement promo)
-    last = root.lastElementChild;
+    // Retire les liens "lightbox" qui ne contiennent qu'une image (souvent des URLs cassées, inutiles sans JS)
+    root.querySelectorAll("a").forEach(a => {
+      const onlyImg = a.children.length === 1 && a.children[0].tagName === "IMG" && a.textContent.trim() === "";
+      if (onlyImg) a.replaceWith(a.children[0]);
+    });
+
+    // Supprime tout élément visuellement vide, sur TOUTES les balises, en répétant jusqu'à stabilisation
+    let changed = true;
+    while (changed) {
+      changed = false;
+      root.querySelectorAll("*").forEach(el => {
+        const protectedTags = ["IMG", "IFRAME", "VIDEO", "SVG"];
+        if (!protectedTags.includes(el.tagName) && el.parentNode && isVisuallyEmpty(el)) {
+          el.remove();
+          changed = true;
+        }
+      });
+    }
+
+    // Supprime une image isolée en toute fin d'article (sans légende = probablement promo)
+    let last = root.lastElementChild;
     while (last) {
       const onlyImage = last.children.length > 0 &&
         Array.from(last.childNodes).every(n =>
@@ -182,6 +220,13 @@ app.get("/read", async (req, res) => {
   table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
   th, td { padding: 0.6em 1em; border-bottom: 1px solid rgba(0,0,0,0.1); text-align: left; }
   @media (prefers-color-scheme: dark) { th, td { border-bottom-color: rgba(255,255,255,0.1); } }
+  .verdict-card { display: flex; gap: 1.5em; margin: 2em 0; flex-wrap: wrap; }
+  .verdict-col { flex: 1; min-width: 220px; padding: 1.2em; border-radius: 14px; background: rgba(0,0,0,0.03); }
+  @media (prefers-color-scheme: dark) { .verdict-col { background: rgba(255,255,255,0.05); } }
+  .verdict-col h4 { margin: 0 0 0.6em 0; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.03em; }
+  .verdict-pros h4 { color: #2e9e4f; }
+  .verdict-cons h4 { color: #d64545; }
+  .verdict-col ul { margin: 0; padding-left: 1.2em; }
 </style>
 </head>
 <body>
