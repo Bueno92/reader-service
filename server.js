@@ -52,12 +52,21 @@ app.get("/read", async (req, res) => {
     const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
                      document.querySelector('meta[name="twitter:image"]')?.getAttribute("content");
 
+    // Repère les encarts d'achat AVANT suppression (avant que Readability ne strip les classes)
     let buyBoxCandidates = Array.from(document.querySelectorAll("div, section, aside")).filter(looksLikeBuyBox);
     buyBoxCandidates = buyBoxCandidates.filter(el =>
       !buyBoxCandidates.some(other => other !== el && el.contains(other))
     );
     const savedBuyBoxes = buyBoxCandidates.map(el => el.outerHTML);
 
+    // IMPORTANT : tout filtre par classe doit s'exécuter ICI, sur le document brut —
+    // Readability supprime les attributs "class" de tout ce qu'il extrait, donc ces
+    // sélecteurs ne matcheraient plus rien une fois article.content généré.
+    document.querySelectorAll(
+      '[class*="premium-promo"], [class*="card-install-pwa"], [class*="hof-box"], [class*="post-card"], [class*="related-posts"], [class*="author-bio"], [class*="post-author"], [class*="author-box"]'
+    ).forEach(el => el.remove());
+
+    // Corrige les images en lazy-load (data-src, srcset, picture, background-image)
     document.querySelectorAll("img").forEach(img => {
       const current = img.getAttribute("src");
       if (!current || current.startsWith("data:")) {
@@ -113,19 +122,7 @@ app.get("/read", async (req, res) => {
 
     root.querySelectorAll("[style]:not(svg):not(svg *)").forEach(el => el.removeAttribute("style"));
     root.querySelectorAll("form, input, button, select, textarea").forEach(el => el.remove());
-
-    // Supprime les vidéos/audios/iframes intégrés (jamais fonctionnels sans JavaScript)
     root.querySelectorAll("video, audio, iframe").forEach(el => el.remove());
-
-    // Supprime les blocs promo identifiés par leur classe (Numerama, WordPress générique)
-    root.querySelectorAll(
-      '[class*="premium-promo"], [class*="card-install-pwa"], [class*="hof-box"], [class*="post-card"], [class*="related-posts"]'
-    ).forEach(el => el.remove());
-
-    // Tentative générique pour les blocs bio auteur (classes courantes) - à affiner par site si besoin
-    root.querySelectorAll(
-      '[class*="author-bio"], [class*="post-author"], [class*="author-box"], [class*="auteur"]'
-    ).forEach(el => el.remove());
 
     root.querySelectorAll("ul, ol").forEach(list => {
       const links = list.querySelectorAll("a");
