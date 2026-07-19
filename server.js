@@ -59,12 +59,15 @@ app.get("/read", async (req, res) => {
     );
     const savedBuyBoxes = buyBoxCandidates.map(el => el.outerHTML);
 
-    // IMPORTANT : tout filtre par classe doit s'exécuter ICI, sur le document brut —
+    // IMPORTANT : tout filtre par classe/id doit s'exécuter ICI, sur le document brut —
     // Readability supprime les attributs "class" de tout ce qu'il extrait, donc ces
     // sélecteurs ne matcheraient plus rien une fois article.content généré.
     document.querySelectorAll(
       '[class*="premium-promo"], [class*="card-install-pwa"], [class*="hof-box"], [class*="post-card"], [class*="related-posts"], [class*="author-bio"], [class*="post-author"], [class*="author-box"]'
     ).forEach(el => el.remove());
+
+    // Supprime les encarts "tag associé" de Numerama (id du type embedded-tag-XXX)
+    document.querySelectorAll('[id*="embedded-tag"]').forEach(el => el.remove());
 
     // Corrige les images en lazy-load (data-src, srcset, picture, background-image)
     document.querySelectorAll("img").forEach(img => {
@@ -133,7 +136,7 @@ app.get("/read", async (req, res) => {
       }
     });
 
-    const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés|édito exclusif|Inscrivez-vous gratuitement|newsletter tech|ToujoursPlus/i;
+    const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés|édito exclusif|Inscrivez-vous gratuitement|newsletter tech|ToujoursPlus|Vous avez lu.*articles|bonne raison de ne pas s.abonner|Meilleur Gestionnaire de (mots de passe|mot de passe)|Retrouvez nos tests complets/i;
     root.querySelectorAll("p, div").forEach(el => {
       const text = el.textContent.trim();
       if (junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
