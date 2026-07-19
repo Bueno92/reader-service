@@ -26,13 +26,17 @@ app.get("/read", async (req, res) => {
     const contentDom = new JSDOM(`<div id="root">${article.content}</div>`);
     const root = contentDom.window.document.getElementById("root");
 
+    // Supprime les embeds Twitter/X et autres réseaux sociaux
     root.querySelectorAll(
       '.twitter-tweet, [class*="twitter"], [class*="instagram-media"], [class*="tiktok-embed"], blockquote[class*="embed"], iframe'
     ).forEach(el => el.remove());
 
-    const cookiePatterns = /cookies et autres traceurs|Ce contenu est bloqué|en savoir plus\)$|opéré par (Twitter|Meta|Google|TikTok)/i;
-    root.querySelectorAll("p, div").forEach(el => {
-      if (cookiePatterns.test(el.textContent)) el.remove();
+    // Supprime les petits paragraphes de bandeau cookie (jamais les gros conteneurs)
+    const cookiePatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)/i;
+    root.querySelectorAll("p").forEach(el => {
+      if (el.textContent.length < 800 && cookiePatterns.test(el.textContent)) {
+        el.remove();
+      }
     });
 
     const cleanedContent = root.innerHTML;
