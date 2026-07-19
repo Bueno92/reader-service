@@ -52,24 +52,24 @@ app.get("/read", async (req, res) => {
     const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
                      document.querySelector('meta[name="twitter:image"]')?.getAttribute("content");
 
-    // Repère les encarts d'achat AVANT suppression (avant que Readability ne strip les classes)
     let buyBoxCandidates = Array.from(document.querySelectorAll("div, section, aside")).filter(looksLikeBuyBox);
     buyBoxCandidates = buyBoxCandidates.filter(el =>
       !buyBoxCandidates.some(other => other !== el && el.contains(other))
     );
     const savedBuyBoxes = buyBoxCandidates.map(el => el.outerHTML);
 
-    // IMPORTANT : tout filtre par classe/id doit s'exécuter ICI, sur le document brut —
-    // Readability supprime les attributs "class" de tout ce qu'il extrait, donc ces
-    // sélecteurs ne matcheraient plus rien une fois article.content généré.
     document.querySelectorAll(
       '[class*="premium-promo"], [class*="card-install-pwa"], [class*="hof-box"], [class*="post-card"], [class*="related-posts"], [class*="author-bio"], [class*="post-author"], [class*="author-box"]'
     ).forEach(el => el.remove());
 
-    // Supprime les encarts "tag associé" de Numerama (id du type embedded-tag-XXX)
     document.querySelectorAll('[id*="embedded-tag"]').forEach(el => el.remove());
 
-    // Corrige les images en lazy-load (data-src, srcset, picture, background-image)
+    // Supprime le widget "enquête" de Blog du Modérateur (repéré par ses illustrations)
+    document.querySelectorAll('img[alt*="enquête" i]').forEach(img => {
+      const container = img.closest("p") || img;
+      container.remove();
+    });
+
     document.querySelectorAll("img").forEach(img => {
       const current = img.getAttribute("src");
       if (!current || current.startsWith("data:")) {
@@ -141,6 +141,20 @@ app.get("/read", async (req, res) => {
       const text = el.textContent.trim();
       if (junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
         el.remove();
+      }
+    });
+
+    // Supprime le reste du widget "enquête" (titre + texte + CTA), jusqu'au prochain vrai titre
+    const surveyHeadingPattern = /participez.*enquête|community managers/i;
+    Array.from(root.querySelectorAll("h1, h2, h3, h4")).forEach(h => {
+      if (surveyHeadingPattern.test(h.textContent)) {
+        let next = h.nextElementSibling;
+        h.remove();
+        while (next && !/^H[1-4]$/.test(next.tagName)) {
+          const toRemove = next;
+          next = next.nextElementSibling;
+          toRemove.remove();
+        }
       }
     });
 
@@ -240,29 +254,4 @@ app.get("/read", async (req, res) => {
   hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2.5em 0; }
   table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
   th, td { padding: 0.6em 1em; border-bottom: 1px solid rgba(0,0,0,0.1); text-align: left; }
-  @media (prefers-color-scheme: dark) { th, td { border-bottom-color: rgba(255,255,255,0.1); } }
-  .verdict-card { display: flex; gap: 1.5em; margin: 2em 0; flex-wrap: wrap; }
-  .verdict-col { flex: 1; min-width: 220px; padding: 1.2em; border-radius: 14px; background: rgba(0,0,0,0.03); }
-  @media (prefers-color-scheme: dark) { .verdict-col { background: rgba(255,255,255,0.05); } }
-  .verdict-col h4 { margin: 0 0 0.6em 0; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.03em; }
-  .verdict-pros h4 { color: #2e9e4f; }
-  .verdict-cons h4 { color: #d64545; }
-  .verdict-col ul { margin: 0; padding-left: 1.2em; }
-  .buy-box-section { margin: 2.5em 0; padding: 1.4em; border-radius: 14px; background: rgba(0,102,204,0.06); }
-  @media (prefers-color-scheme: dark) { .buy-box-section { background: rgba(108,178,235,0.08); } }
-  .buy-box-section h4 { margin: 0 0 0.8em 0; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.03em; }
-  .buy-box { margin: 0.8em 0; }
-</style>
-</head>
-<body>
-  <h1>${article.title}</h1>
-  <div class="byline">${article.byline || ""} ${article.siteName ? "· " + article.siteName : ""}</div>
-  ${cleanedContent}
-</body>
-</html>`);
-  } catch (err) {
-    res.status(500).send("Erreur : " + err.message);
-  }
-});
-
-app.listen(PORT, () => console.log(`Reader server running on port ${PORT}`));
+  @media (prefers-color-scheme: dark) { th, td { border-bottom-color:
