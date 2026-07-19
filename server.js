@@ -12,6 +12,12 @@ function firstUrlFromSrcset(srcset) {
   return srcset.split(",")[0].trim().split(" ")[0] || null;
 }
 
+function isVisuallyEmpty(el) {
+  const text = el.textContent.replace(/[\s\u00A0]/g, "");
+  const hasMedia = el.querySelector("img, iframe, blockquote, video, svg");
+  return text.length === 0 && !hasMedia;
+}
+
 app.get("/read", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).send("Paramètre 'url' manquant");
@@ -24,7 +30,11 @@ app.get("/read", async (req, res) => {
     const dom = new JSDOM(html, { url: targetUrl });
     const document = dom.window.document;
 
-    // --- Corrige les images lazy-load / picture / background-image AVANT extraction ---
+    // Récupère l'image de couverture via og:image AVANT extraction (filet de sécurité universel)
+    const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
+                     document.querySelector('meta[name="twitter:image"]')?.getAttribute("content");
+
+    // Corrige les images lazy-load / picture / background-image
     document.querySelectorAll("img").forEach(img => {
       const current = img.getAttribute("src");
       if (!current || current.startsWith("data:")) {
@@ -73,26 +83,25 @@ app.get("/read", async (req, res) => {
     // Supprime les styles inline (empêche les cartes Twitter/X de forcer un fond blanc)
     root.querySelectorAll("[style]").forEach(el => el.removeAttribute("style"));
 
-    // Supprime les blocs promo/cookie textuels courts (jamais s'ils contiennent image/tweet/iframe)
+    // Supprime les blocs promo/cookie textuels (jamais s'ils contiennent image/tweet/iframe)
     const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés/i;
     root.querySelectorAll("p, div").forEach(el => {
       const text = el.textContent.trim();
-      if (text.length < 500 && junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
+      if (junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
         el.remove();
       }
     });
 
-    // Supprime les blocs de fin sans aucun texte (rangées d'icônes, badges d'app) - s'arrête au premier vrai texte rencontré
-    let trailing = Array.from(root.children);
-    for (let i = trailing.length - 1; i >= 0; i--) {
-      if (trailing[i].textContent.trim().length === 0) {
-        trailing[i].remove();
-      } else {
-        break;
-      }
-    }
+    // Supprime tout bloc visuellement vide (rectangles fantômes, rangées d'icônes sans texte)
+    root.querySelectorAll("div, span, p").forEach(el => {
+      if (isVisuallyEmpty(el)) el.remove();
+    });
 
-    const cleanedContent = root.innerHTML;
+    // Si aucune image n'a survécu dans le contenu, on ajoute l'image de couverture (og:image) en tête
+    let cleanedContent = root.innerHTML;
+    if (!root.querySelector("img") && ogImage) {
+      cleanedContent = `<img src="${ogImage}" alt="">` + cleanedContent;
+    }
 
     res.send(`<!DOCTYPE html>
 <html lang="fr">
