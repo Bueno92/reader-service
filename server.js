@@ -233,4 +233,36 @@ app.get("/read", async (req, res) => {
   img { max-width: 100%; height: auto; border-radius: 10px; margin: 1.5em 0; display: block; }
   figcaption { font-size: 0.8em; color: #86868b; text-align: center; margin-top: -1em; margin-bottom: 1.5em; }
   a { color: #0066cc; text-decoration: none; border-bottom: 1px solid rgba(0,102,204,0.3); }
-  blockquote { margin: 2em 0; padding: 1.2em 1.4em; background: rgba(0,0,0,0.04); border-left: none; border-radius: 14px; font-style: normal; font-size: 0.95em;
+  blockquote { margin: 2em 0; padding: 1.2em 1.4em; background: rgba(0,0,0,0.04); border-left: none; border-radius: 14px; font-style: normal; font-size: 0.95em; color: inherit; }
+  @media (prefers-color-scheme: dark) { blockquote { background: rgba(255,255,255,0.07); } }
+  blockquote p { margin: 0.5em 0; }
+  blockquote a { color: inherit; }
+  hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2.5em 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
+  th, td { padding: 0.6em 1em; border-bottom: 1px solid rgba(0,0,0,0.1); text-align: left; }
+  @media (prefers-color-scheme: dark) { th, td { border-bottom-color: rgba(255,255,255,0.1); } }
+  .verdict-card { display: flex; gap: 1.5em; margin: 2em 0; flex-wrap: wrap; }
+  .verdict-col { flex: 1; min-width: 220px; padding: 1.2em; border-radius: 14px; background: rgba(0,0,0,0.03); }
+  @media (prefers-color-scheme: dark) { .verdict-col { background: rgba(255,255,255,0.05); } }
+  .verdict-col h4 { margin: 0 0 0.6em 0; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.03em; }
+  .verdict-pros h4 { color: #2e9e4f; }
+  .verdict-cons h4 { color: #d64545; }
+  .verdict-col ul { margin: 0; padding-left: 1.2em; }
+  .buy-box-section { margin: 2.5em 0; padding: 1.4em; border-radius: 14px; background: rgba(0,102,204,0.06); }
+  @media (prefers-color-scheme: dark) { .buy-box-section { background: rgba(108,178,235,0.08); } }
+  .buy-box-section h4 { margin: 0 0 0.8em 0; font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.03em; }
+  .buy-box { margin: 0.8em 0; }
+</style>
+</head>
+<body>
+  <h1>${article.title}</h1>
+  <div class="byline">${article.byline || ""} ${article.siteName ? "· " + article.siteName : ""}</div>
+  ${cleanedContent}
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send("Erreur : " + err.message);
+  }
+});
+
+app.listen(PORT, () => console.log(`Reader server running on port ${PORT}`));
