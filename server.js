@@ -12,10 +12,10 @@ function firstUrlFromSrcset(srcset) {
   return srcset.split(",")[0].trim().split(" ")[0] || null;
 }
 
-function isVisuallyEmpty(el) {
-  const text = el.textContent.replace(/[\s\u00A0]/g, "");
-  const hasMedia = el.querySelector("img, iframe, blockquote, video, svg");
-  return text.length === 0 && !hasMedia;
+function isVisuallyEmpty(node) {
+  const text = node.textContent.replace(/[\s\u00A0]/g, "");
+  const hasRealMedia = node.querySelector("img, iframe, blockquote, video");
+  return text.length === 0 && !hasRealMedia;
 }
 
 app.get("/read", async (req, res) => {
@@ -34,7 +34,7 @@ app.get("/read", async (req, res) => {
     const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
                      document.querySelector('meta[name="twitter:image"]')?.getAttribute("content");
 
-    // Corrige les images lazy-load / picture / background-image
+    // Corrige les images en lazy-load (data-src, srcset, picture, background-image)
     document.querySelectorAll("img").forEach(img => {
       const current = img.getAttribute("src");
       if (!current || current.startsWith("data:")) {
@@ -72,6 +72,16 @@ app.get("/read", async (req, res) => {
       if (wrapper.querySelector("img")) ns.replaceWith(wrapper);
     });
 
+    // Résout tout chemin d'image relatif restant, en se basant sur l'URL originale
+    document.querySelectorAll("img").forEach(img => {
+      const src = img.getAttribute("src");
+      if (src && !/^(https?:|data:)/i.test(src)) {
+        try {
+          img.setAttribute("src", new URL(src, targetUrl).href);
+        } catch (e) { /* ignore une URL invalide */ }
+      }
+    });
+
     const reader = new Readability(document);
     const article = reader.parse();
 
@@ -80,8 +90,21 @@ app.get("/read", async (req, res) => {
     const contentDom = new JSDOM(`<div id="root">${article.content}</div>`);
     const root = contentDom.window.document.getElementById("root");
 
-    // Supprime les styles inline (empêche les cartes Twitter/X de forcer un fond blanc)
-    root.querySelectorAll("[style]").forEach(el => el.removeAttribute("style"));
+    // Supprime les styles inline (sauf sur les SVG, pour préserver les jauges/graphiques vectoriels)
+    root.querySelectorAll("[style]:not(svg):not(svg *)").forEach(el => el.removeAttribute("style"));
+
+    // Supprime les widgets de formulaire (newsletter, recherche, etc.)
+    root.querySelectorAll("form, input, button, select, textarea").forEach(el => el.remove());
+
+    // Supprime les tables des matières auto-générées (listes de liens d'ancrage internes uniquement)
+    root.querySelectorAll("ul, ol").forEach(list => {
+      const links = list.querySelectorAll("a");
+      const listItems = list.querySelectorAll("li");
+      if (links.length > 0 && links.length >= listItems.length) {
+        const allAnchors = Array.from(links).every(a => (a.getAttribute("href") || "").startsWith("#"));
+        if (allAnchors) list.remove();
+      }
+    });
 
     // Supprime les blocs promo/cookie textuels (jamais s'ils contiennent image/tweet/iframe)
     const junkPatterns = /cookies et autres traceurs|Ce contenu est bloqué|opéré par (Twitter|Meta|Google|TikTok)|retirer votre consentement|Politique cookies|manquer aucune actualité|suivez-nous sur|écran d.accueil|en un clin d.œil|restez connectés/i;
@@ -92,12 +115,35 @@ app.get("/read", async (req, res) => {
       }
     });
 
-    // Supprime tout bloc visuellement vide (rectangles fantômes, rangées d'icônes sans texte)
+    // Supprime tout bloc visuellement vide (rectangles fantômes, icônes seules sans texte)
     root.querySelectorAll("div, span, p").forEach(el => {
       if (isVisuallyEmpty(el)) el.remove();
     });
 
-    // Si aucune image n'a survécu dans le contenu, on ajoute l'image de couverture (og:image) en tête
+    // Passe 1 : nettoie les blocs vides en toute fin d'article
+    let last = root.lastElementChild;
+    while (last && isVisuallyEmpty(last)) {
+      root.removeChild(last);
+      last = root.lastElementChild;
+    }
+
+    // Passe 2 : supprime une image isolée en toute fin (sans légende = probablement promo)
+    last = root.lastElementChild;
+    while (last) {
+      const onlyImage = last.children.length > 0 &&
+        Array.from(last.childNodes).every(n =>
+          n.nodeName === "IMG" || (n.nodeType === 3 && !n.textContent.trim())
+        );
+      const isBareImage = last.tagName === "IMG";
+      if (onlyImage || isBareImage) {
+        root.removeChild(last);
+        last = root.lastElementChild;
+      } else {
+        break;
+      }
+    }
+
+    // Si aucune image n'a survécu, on ajoute l'image de couverture (og:image) en tête
     let cleanedContent = root.innerHTML;
     if (!root.querySelector("img") && ogImage) {
       cleanedContent = `<img src="${ogImage}" alt="">` + cleanedContent;
@@ -133,6 +179,9 @@ app.get("/read", async (req, res) => {
   blockquote p { margin: 0.5em 0; }
   blockquote a { color: inherit; }
   hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2.5em 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
+  th, td { padding: 0.6em 1em; border-bottom: 1px solid rgba(0,0,0,0.1); text-align: left; }
+  @media (prefers-color-scheme: dark) { th, td { border-bottom-color: rgba(255,255,255,0.1); } }
 </style>
 </head>
 <body>
