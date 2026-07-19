@@ -26,6 +26,26 @@ function looksLikeBuyBox(el) {
   return hasPrice && !!link;
 }
 
+// Coupe tout ce qui suit un marqueur de "fin d'article" (footer/widgets génériques),
+// en remontant l'arbre DOM et en supprimant les frères suivants à chaque niveau.
+function pruneTrailingContent(document, markerRegex) {
+  const candidates = Array.from(document.querySelectorAll("body *"));
+  const marker = candidates.find(el => markerRegex.test(el.textContent) && el.children.length < 6);
+  if (!marker) return;
+
+  let node = marker;
+  while (node && node.tagName !== "BODY") {
+    let sibling = node.nextSibling;
+    while (sibling) {
+      const toRemove = sibling;
+      sibling = sibling.nextSibling;
+      if (toRemove.remove) toRemove.remove();
+    }
+    node = node.parentElement;
+  }
+  marker.remove();
+}
+
 async function fetchArticleHtml(targetUrl) {
   try {
     const direct = await fetch(targetUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
@@ -52,6 +72,10 @@ app.get("/read", async (req, res) => {
     const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
                      document.querySelector('meta[name="twitter:image"]')?.getAttribute("content");
 
+    // Coupe tout ce qui suit la fin réelle de l'article (footer/widgets génériques)
+    pruneTrailingContent(document, /^Sujets liés\s*:?$/i);
+    pruneTrailingContent(document, /Community managers.*enquête|On filtre, on vérifie, on rédige/i);
+
     let buyBoxCandidates = Array.from(document.querySelectorAll("div, section, aside")).filter(looksLikeBuyBox);
     buyBoxCandidates = buyBoxCandidates.filter(el =>
       !buyBoxCandidates.some(other => other !== el && el.contains(other))
@@ -64,7 +88,6 @@ app.get("/read", async (req, res) => {
 
     document.querySelectorAll('[id*="embedded-tag"]').forEach(el => el.remove());
 
-    // Supprime le widget "enquête" de Blog du Modérateur (repéré par ses illustrations)
     document.querySelectorAll('img[alt*="enquête" i]').forEach(img => {
       const container = img.closest("p") || img;
       container.remove();
@@ -141,20 +164,6 @@ app.get("/read", async (req, res) => {
       const text = el.textContent.trim();
       if (junkPatterns.test(text) && !el.querySelector("img, figure, iframe, blockquote")) {
         el.remove();
-      }
-    });
-
-    // Supprime le reste du widget "enquête" (titre + texte + CTA), jusqu'au prochain vrai titre
-    const surveyHeadingPattern = /participez.*enquête|community managers/i;
-    Array.from(root.querySelectorAll("h1, h2, h3, h4")).forEach(h => {
-      if (surveyHeadingPattern.test(h.textContent)) {
-        let next = h.nextElementSibling;
-        h.remove();
-        while (next && !/^H[1-4]$/.test(next.tagName)) {
-          const toRemove = next;
-          next = next.nextElementSibling;
-          toRemove.remove();
-        }
       }
     });
 
