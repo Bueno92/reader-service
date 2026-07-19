@@ -72,6 +72,7 @@ app.get("/read", async (req, res) => {
 
     pruneTrailingContent(document, /^Sujets liés\s*:?$/i);
     pruneTrailingContent(document, /Community managers.*enquête|On filtre, on vérifie, on rédige/i);
+    pruneTrailingContent(document, /^Un article de la rédaction/i);
 
     let buyBoxCandidates = Array.from(document.querySelectorAll("div, section, aside")).filter(looksLikeBuyBox);
     buyBoxCandidates = buyBoxCandidates.filter(el =>
